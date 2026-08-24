@@ -1,0 +1,122 @@
+package javafxtesting.models;
+
+import java.util.ArrayList;
+import javafxtesting.exceptions.DatabaseException;
+import javafxtesting.exceptions.InvalidReservationException;
+
+/**
+ * Guest class - extends User
+ * Represents a hotel guest who can make reservations
+ * Demonstrates Inheritance concept from CS313
+ */
+public class Guest extends User {
+
+    /**
+     * Default constructor
+     */
+    public Guest() {
+        super();
+        this.userType = "Guest";
+    }
+
+    /**
+     * Constructor with all parameters
+     */
+    public Guest(int userId, String username, String password, String name, String email, String phone) {
+        super(userId, username, password, "Guest", name, email, phone);
+    }
+
+    /**
+     * Constructor without userId (for new guests)
+     */
+    public Guest(String username, String password, String name, String email, String phone) {
+        super(username, password, "Guest", name, email, phone);
+    }
+
+    // ============================================
+    // Guest-specific methods
+    // ============================================
+
+    /**
+     * Browse available rooms
+     * @return ArrayList of available rooms
+     */
+    public ArrayList<Room> browseRooms() throws DatabaseException {
+        return Room.getAvailableRooms();
+    }
+
+    /**
+     * Browse rooms by type
+     * @param roomType The type of room to filter
+     * @return ArrayList of rooms matching the type
+     */
+    public ArrayList<Room> browseRoomsByType(String roomType) throws DatabaseException {
+        ArrayList<Room> allRooms = Room.getRoomsByType(roomType);
+        ArrayList<Room> availableRooms = new ArrayList<>();
+
+        for (Room room : allRooms) {
+            if (room.isAvailable()) {
+                availableRooms.add(room);
+            }
+        }
+
+        return availableRooms;
+    }
+
+    /**
+     * Make a new reservation
+     * @param reservation The reservation to create
+     */
+    public void makeReservation(Reservation reservation) throws DatabaseException, InvalidReservationException {
+        // Validate that reservation is for this guest
+        if (reservation.getGuest().getUserId() != this.userId) {
+            throw new InvalidReservationException("Reservation must be for the current guest");
+        }
+
+        // Save reservation
+        reservation.saveReservation();
+        System.out.println("Reservation created successfully for guest: " + this.name);
+    }
+
+    /**
+     * View my reservations
+     * @return ArrayList of reservations for this guest
+     */
+    public ArrayList<Reservation> viewMyReservations() throws DatabaseException {
+        return Reservation.getReservationsByGuestId(this.userId);
+    }
+
+    /**
+     * Cancel a reservation
+     * @param reservationId The ID of the reservation to cancel
+     */
+    public void cancelReservation(int reservationId) throws DatabaseException, InvalidReservationException {
+        Reservation reservation = Reservation.getReservationById(reservationId);
+
+        if (reservation == null) {
+            throw new InvalidReservationException("Reservation not found");
+        }
+
+        if (reservation.getGuest().getUserId() != this.userId) {
+            throw new InvalidReservationException("You can only cancel your own reservations");
+        }
+
+        if ("Cancelled".equals(reservation.getStatus()) || "Checked-Out".equals(reservation.getStatus())) {
+            throw new InvalidReservationException("Cannot cancel a reservation that is already cancelled or checked out");
+        }
+
+        reservation.cancelReservation();
+        System.out.println("Reservation cancelled successfully");
+    }
+
+    @Override
+    public String toString() {
+        return "Guest{" +
+                "userId=" + userId +
+                ", username='" + username + '\'' +
+                ", name='" + name + '\'' +
+                ", email='" + email + '\'' +
+                ", phone='" + phone + '\'' +
+                '}';
+    }
+}

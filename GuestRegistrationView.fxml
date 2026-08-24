@@ -1,0 +1,154 @@
+package javafxtesting.models;
+
+import java.util.ArrayList;
+import javafxtesting.exceptions.DatabaseException;
+import javafxtesting.exceptions.InvalidReservationException;
+
+/**
+ * Receptionist class - extends User
+ * Represents a hotel receptionist who manages reservations and check-ins/check-outs
+ * Demonstrates Inheritance concept from CS313
+ */
+public class Receptionist extends User {
+
+    /**
+     * Default constructor
+     */
+    public Receptionist() {
+        super();
+        this.userType = "Receptionist";
+    }
+
+    /**
+     * Constructor with all parameters
+     */
+    public Receptionist(int userId, String username, String password, String name, String email, String phone) {
+        super(userId, username, password, "Receptionist", name, email, phone);
+    }
+
+    /**
+     * Constructor without userId (for new receptionists)
+     */
+    public Receptionist(String username, String password, String name, String email, String phone) {
+        super(username, password, "Receptionist", name, email, phone);
+    }
+
+    // ============================================
+    // Receptionist-specific methods
+    // ============================================
+
+    /**
+     * View all reservations in the system
+     * @return ArrayList of all reservations
+     */
+    public ArrayList<Reservation> viewAllReservations() throws DatabaseException {
+        return Reservation.getAllReservations();
+    }
+
+    /**
+     * View reservations by status
+     * @param status The status to filter by
+     * @return ArrayList of reservations with the specified status
+     */
+    public ArrayList<Reservation> viewReservationsByStatus(String status) throws DatabaseException {
+        return Reservation.getReservationsByStatus(status);
+    }
+
+    /**
+     * Confirm a pending reservation
+     * @param reservationId The ID of the reservation to confirm
+     */
+    public void confirmReservation(int reservationId) throws DatabaseException, InvalidReservationException {
+        Reservation reservation = Reservation.getReservationById(reservationId);
+
+        if (reservation == null) {
+            throw new InvalidReservationException("Reservation not found");
+        }
+
+        if (!"Pending".equals(reservation.getStatus())) {
+            throw new InvalidReservationException("Only pending reservations can be confirmed");
+        }
+
+        reservation.confirmReservation();
+        System.out.println("Reservation confirmed by receptionist: " + this.name);
+    }
+
+    /**
+     * Check-in a guest
+     * @param reservationId The ID of the reservation to check-in
+     */
+    public void checkInGuest(int reservationId) throws DatabaseException, InvalidReservationException {
+        Reservation reservation = Reservation.getReservationById(reservationId);
+
+        if (reservation == null) {
+            throw new InvalidReservationException("Reservation not found");
+        }
+
+        if (!"Confirmed".equals(reservation.getStatus())) {
+            throw new InvalidReservationException("Only confirmed reservations can be checked in");
+        }
+
+        reservation.checkIn();
+
+        // Update room status to Occupied
+        Room room = reservation.getRoom();
+        room.setStatus("Occupied");
+        room.updateRoom();
+
+        System.out.println("Guest checked in by receptionist: " + this.name);
+    }
+
+    /**
+     * Check-out a guest
+     * @param reservationId The ID of the reservation to check-out
+     */
+    public void checkOutGuest(int reservationId) throws DatabaseException, InvalidReservationException {
+        Reservation reservation = Reservation.getReservationById(reservationId);
+
+        if (reservation == null) {
+            throw new InvalidReservationException("Reservation not found");
+        }
+
+        if (!"Checked-In".equals(reservation.getStatus())) {
+            throw new InvalidReservationException("Only checked-in guests can be checked out");
+        }
+
+        reservation.checkOut();
+
+        // Update room status to Available
+        Room room = reservation.getRoom();
+        room.setStatus("Available");
+        room.updateRoom();
+
+        System.out.println("Guest checked out by receptionist: " + this.name);
+    }
+
+    /**
+     * Update room status
+     * @param roomId The ID of the room to update
+     * @param newStatus The new status for the room
+     */
+    public void updateRoomStatus(int roomId, String newStatus) throws DatabaseException {
+        Room room = Room.getRoomById(roomId);
+
+        if (room == null) {
+            throw new DatabaseException("Room not found");
+        }
+
+        room.setStatus(newStatus);
+        room.updateRoom();
+
+        System.out.println("Room status updated by receptionist: " + this.name);
+    }
+
+    @Override
+    public String toString() {
+        return "Receptionist{" +
+                "userId=" + userId +
+                ", username='" + username + '\'' +
+                ", name='" + name + '\'' +
+                ", email='" + email + '\'' +
+                ", phone='" + phone + '\'' +
+                '}';
+    }
+}

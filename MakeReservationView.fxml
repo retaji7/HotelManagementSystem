@@ -1,0 +1,331 @@
+package javafxtesting.models;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import javafxtesting.database.DatabaseConnection;
+import javafxtesting.exceptions.DatabaseException;
+
+/**
+ * Room model class representing a hotel room
+ * Contains room details and database operations
+ */
+public class Room {
+
+    // Attributes
+    private int roomId;
+    private String roomNumber;
+    private String roomType;  // Single, Double, Suite
+    private double price;
+    private int capacity;
+    private String status;    // Available, Occupied, Maintenance
+
+    /**
+     * Default constructor
+     */
+    public Room() {
+    }
+
+    /**
+     * Constructor with all parameters
+     */
+    public Room(int roomId, String roomNumber, String roomType, double price, int capacity, String status) {
+        this.roomId = roomId;
+        this.roomNumber = roomNumber;
+        this.roomType = roomType;
+        this.price = price;
+        this.capacity = capacity;
+        this.status = status;
+    }
+
+    /**
+     * Constructor without roomId (for new rooms)
+     */
+    public Room(String roomNumber, String roomType, double price, int capacity, String status) {
+        this.roomNumber = roomNumber;
+        this.roomType = roomType;
+        this.price = price;
+        this.capacity = capacity;
+        this.status = status;
+    }
+
+    // Getters and Setters
+    public int getRoomId() {
+        return roomId;
+    }
+
+    public void setRoomId(int roomId) {
+        this.roomId = roomId;
+    }
+
+    public String getRoomNumber() {
+        return roomNumber;
+    }
+
+    public void setRoomNumber(String roomNumber) {
+        this.roomNumber = roomNumber;
+    }
+
+    public String getRoomType() {
+        return roomType;
+    }
+
+    public void setRoomType(String roomType) {
+        this.roomType = roomType;
+    }
+
+    public double getPrice() {
+        return price;
+    }
+
+    public void setPrice(double price) {
+        this.price = price;
+    }
+
+    public int getCapacity() {
+        return capacity;
+    }
+
+    public void setCapacity(int capacity) {
+        this.capacity = capacity;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    /**
+     * Check if room is available
+     */
+    public boolean isAvailable() {
+        return "Available".equals(this.status);
+    }
+
+    // ============================================
+    // Database Methods
+    // ============================================
+
+    /**
+     * Save room to database (INSERT)
+     */
+    public void saveRoom() throws DatabaseException {
+        String sql = "INSERT INTO ROOMS (ROOM_ID, ROOM_NUMBER, ROOM_TYPE, PRICE, CAPACITY, STATUS) " +
+                     "VALUES (ROOM_SEQ.NEXTVAL, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql, new String[]{"ROOM_ID"})) {
+
+            pstmt.setString(1, this.roomNumber);
+            pstmt.setString(2, this.roomType);
+            pstmt.setDouble(3, this.price);
+            pstmt.setInt(4, this.capacity);
+            pstmt.setString(5, this.status);
+
+            pstmt.executeUpdate();
+
+            // Get generated room ID
+            try (ResultSet rs = pstmt.getGeneratedKeys()) {
+                if (rs.next()) {
+                    this.roomId = rs.getInt(1);
+                }
+            }
+
+            System.out.println("Room saved successfully: " + this.roomNumber);
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to save room: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Update room in database
+     */
+    public void updateRoom() throws DatabaseException {
+        String sql = "UPDATE ROOMS SET ROOM_NUMBER = ?, ROOM_TYPE = ?, PRICE = ?, CAPACITY = ?, STATUS = ? " +
+                     "WHERE ROOM_ID = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, this.roomNumber);
+            pstmt.setString(2, this.roomType);
+            pstmt.setDouble(3, this.price);
+            pstmt.setInt(4, this.capacity);
+            pstmt.setString(5, this.status);
+            pstmt.setInt(6, this.roomId);
+
+            int rowsAffected = pstmt.executeUpdate();
+
+            if (rowsAffected > 0) {
+                System.out.println("Room updated successfully: " + this.roomNumber);
+            } else {
+                throw new DatabaseException("Room not found with ID: " + this.roomId);
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to update room: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Delete room from database
+     */
+    public static void deleteRoom(int roomId) throws DatabaseException {
+        String sql = "DELETE FROM ROOMS WHERE ROOM_ID = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, roomId);
+            int rowsAffected = pstmt.executeUpdate();
+
+            if (rowsAffected > 0) {
+                System.out.println("Room deleted successfully");
+            } else {
+                throw new DatabaseException("Room not found with ID: " + roomId);
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to delete room: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get room by ID
+     */
+    public static Room getRoomById(int roomId) throws DatabaseException {
+        String sql = "SELECT * FROM ROOMS WHERE ROOM_ID = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, roomId);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return new Room(
+                        rs.getInt("ROOM_ID"),
+                        rs.getString("ROOM_NUMBER"),
+                        rs.getString("ROOM_TYPE"),
+                        rs.getDouble("PRICE"),
+                        rs.getInt("CAPACITY"),
+                        rs.getString("STATUS")
+                    );
+                }
+            }
+
+            return null;
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve room: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get all rooms
+     */
+    public static ArrayList<Room> getAllRooms() throws DatabaseException {
+        ArrayList<Room> rooms = new ArrayList<>();
+        String sql = "SELECT * FROM ROOMS ORDER BY ROOM_NUMBER";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
+            while (rs.next()) {
+                rooms.add(new Room(
+                    rs.getInt("ROOM_ID"),
+                    rs.getString("ROOM_NUMBER"),
+                    rs.getString("ROOM_TYPE"),
+                    rs.getDouble("PRICE"),
+                    rs.getInt("CAPACITY"),
+                    rs.getString("STATUS")
+                ));
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve rooms: " + e.getMessage(), e);
+        }
+
+        return rooms;
+    }
+
+    /**
+     * Get available rooms only
+     */
+    public static ArrayList<Room> getAvailableRooms() throws DatabaseException {
+        ArrayList<Room> rooms = new ArrayList<>();
+        String sql = "SELECT * FROM ROOMS WHERE STATUS = 'Available' ORDER BY ROOM_NUMBER";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
+            while (rs.next()) {
+                rooms.add(new Room(
+                    rs.getInt("ROOM_ID"),
+                    rs.getString("ROOM_NUMBER"),
+                    rs.getString("ROOM_TYPE"),
+                    rs.getDouble("PRICE"),
+                    rs.getInt("CAPACITY"),
+                    rs.getString("STATUS")
+                ));
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve available rooms: " + e.getMessage(), e);
+        }
+
+        return rooms;
+    }
+
+    /**
+     * Get rooms by type
+     */
+    public static ArrayList<Room> getRoomsByType(String roomType) throws DatabaseException {
+        ArrayList<Room> rooms = new ArrayList<>();
+        String sql = "SELECT * FROM ROOMS WHERE ROOM_TYPE = ? ORDER BY ROOM_NUMBER";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, roomType);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    rooms.add(new Room(
+                        rs.getInt("ROOM_ID"),
+                        rs.getString("ROOM_NUMBER"),
+                        rs.getString("ROOM_TYPE"),
+                        rs.getDouble("PRICE"),
+                        rs.getInt("CAPACITY"),
+                        rs.getString("STATUS")
+                    ));
+                }
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve rooms by type: " + e.getMessage(), e);
+        }
+
+        return rooms;
+    }
+
+    @Override
+    public String toString() {
+        return "Room{" +
+                "roomId=" + roomId +
+                ", roomNumber='" + roomNumber + '\'' +
+                ", roomType='" + roomType + '\'' +
+                ", price=" + price +
+                ", capacity=" + capacity +
+                ", status='" + status + '\'' +
+                '}';
+    }
+}

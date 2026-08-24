@@ -1,0 +1,556 @@
+package javafxtesting.models;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Date;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import javafxtesting.database.DatabaseConnection;
+import javafxtesting.exceptions.DatabaseException;
+import javafxtesting.exceptions.InvalidReservationException;
+
+/**
+ * Reservation model class representing a hotel reservation
+ * Demonstrates Composition concept - contains Guest and Room objects
+ */
+public class Reservation {
+
+    // Attributes
+    private int reservationId;
+    private Guest guest;           // Composition: Reservation contains Guest
+    private Room room;             // Composition: Reservation contains Room
+    private LocalDate checkInDate;
+    private LocalDate checkOutDate;
+    private double totalPrice;
+    private String status;         // Pending, Confirmed, Checked-In, Checked-Out, Cancelled
+
+    /**
+     * Default constructor
+     */
+    public Reservation() {
+    }
+
+    /**
+     * Constructor with all parameters
+     */
+    public Reservation(int reservationId, Guest guest, Room room, LocalDate checkInDate,
+                      LocalDate checkOutDate, double totalPrice, String status) {
+        this.reservationId = reservationId;
+        this.guest = guest;
+        this.room = room;
+        this.checkInDate = checkInDate;
+        this.checkOutDate = checkOutDate;
+        this.totalPrice = totalPrice;
+        this.status = status;
+    }
+
+    /**
+     * Constructor without reservationId (for new reservations)
+     */
+    public Reservation(Guest guest, Room room, LocalDate checkInDate, LocalDate checkOutDate, String status) {
+        this.guest = guest;
+        this.room = room;
+        this.checkInDate = checkInDate;
+        this.checkOutDate = checkOutDate;
+        this.status = status;
+        this.totalPrice = calculateTotalPrice();
+    }
+
+    // Getters and Setters
+    public int getReservationId() {
+        return reservationId;
+    }
+
+    public void setReservationId(int reservationId) {
+        this.reservationId = reservationId;
+    }
+
+    public Guest getGuest() {
+        return guest;
+    }
+
+    public void setGuest(Guest guest) {
+        this.guest = guest;
+    }
+
+    public Room getRoom() {
+        return room;
+    }
+
+    public void setRoom(Room room) {
+        this.room = room;
+    }
+
+    public LocalDate getCheckInDate() {
+        return checkInDate;
+    }
+
+    public void setCheckInDate(LocalDate checkInDate) {
+        this.checkInDate = checkInDate;
+    }
+
+    public LocalDate getCheckOutDate() {
+        return checkOutDate;
+    }
+
+    public void setCheckOutDate(LocalDate checkOutDate) {
+        this.checkOutDate = checkOutDate;
+    }
+
+    public double getTotalPrice() {
+        return totalPrice;
+    }
+
+    public void setTotalPrice(double totalPrice) {
+        this.totalPrice = totalPrice;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    // ============================================
+    // Business Logic Methods
+    // ============================================
+
+    /**
+     * Calculate total price based on room price and number of nights
+     */
+    public double calculateTotalPrice() {
+        if (checkInDate == null || checkOutDate == null || room == null) {
+            return 0.0;
+        }
+
+        long nights = ChronoUnit.DAYS.between(checkInDate, checkOutDate);
+        return nights * room.getPrice();
+    }
+
+    /**
+     * Validate reservation dates
+     */
+    private void validateDates() throws InvalidReservationException {
+        if (checkInDate == null || checkOutDate == null) {
+            throw new InvalidReservationException("Check-in and check-out dates are required");
+        }
+
+        if (checkInDate.isAfter(checkOutDate)) {
+            throw new InvalidReservationException("Check-in date must be before check-out date");
+        }
+
+        if (checkInDate.isBefore(LocalDate.now())) {
+            throw new InvalidReservationException("Check-in date cannot be in the past");
+        }
+    }
+
+    /**
+     * Confirm reservation
+     */
+    public void confirmReservation() throws DatabaseException {
+        this.status = "Confirmed";
+        updateReservation();
+    }
+
+    /**
+     * Cancel reservation
+     */
+    public void cancelReservation() throws DatabaseException {
+        this.status = "Cancelled";
+        updateReservation();
+    }
+
+    /**
+     * Check-in
+     */
+    public void checkIn() throws DatabaseException {
+        this.status = "Checked-In";
+        updateReservation();
+    }
+
+    /**
+     * Check-out
+     */
+    public void checkOut() throws DatabaseException {
+        this.status = "Checked-Out";
+        updateReservation();
+    }
+
+    // ============================================
+    // Database Methods
+    // ============================================
+
+    /**
+     * Save reservation to database (INSERT)
+     */
+    public void saveReservation() throws DatabaseException, InvalidReservationException {
+        validateDates();
+
+        // Recalculate total price before saving
+        this.totalPrice = calculateTotalPrice();
+
+        String sql = "INSERT INTO RESERVATIONS (RESERVATION_ID, GUEST_ID, ROOM_ID, CHECK_IN_DATE, CHECK_OUT_DATE, TOTAL_PRICE, STATUS) " +
+                     "VALUES (RESERVATION_SEQ.NEXTVAL, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql, new String[]{"RESERVATION_ID"})) {
+
+            pstmt.setInt(1, guest.getUserId());
+            pstmt.setInt(2, room.getRoomId());
+            pstmt.setDate(3, Date.valueOf(checkInDate));
+            pstmt.setDate(4, Date.valueOf(checkOutDate));
+            pstmt.setDouble(5, totalPrice);
+            pstmt.setString(6, status);
+
+            pstmt.executeUpdate();
+
+            // Get generated reservation ID
+            try (ResultSet rs = pstmt.getGeneratedKeys()) {
+                if (rs.next()) {
+                    this.reservationId = rs.getInt(1);
+                }
+            }
+
+            System.out.println("Reservation saved successfully: " + this.reservationId);
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to save reservation: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Update reservation in database
+     */
+    public void updateReservation() throws DatabaseException {
+        String sql = "UPDATE RESERVATIONS SET GUEST_ID = ?, ROOM_ID = ?, CHECK_IN_DATE = ?, CHECK_OUT_DATE = ?, " +
+                     "TOTAL_PRICE = ?, STATUS = ? WHERE RESERVATION_ID = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, guest.getUserId());
+            pstmt.setInt(2, room.getRoomId());
+            pstmt.setDate(3, Date.valueOf(checkInDate));
+            pstmt.setDate(4, Date.valueOf(checkOutDate));
+            pstmt.setDouble(5, totalPrice);
+            pstmt.setString(6, status);
+            pstmt.setInt(7, reservationId);
+
+            int rowsAffected = pstmt.executeUpdate();
+
+            if (rowsAffected > 0) {
+                System.out.println("Reservation updated successfully: " + this.reservationId);
+            } else {
+                throw new DatabaseException("Reservation not found with ID: " + this.reservationId);
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to update reservation: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Delete reservation from database
+     */
+    public static void deleteReservation(int reservationId) throws DatabaseException {
+        String sql = "DELETE FROM RESERVATIONS WHERE RESERVATION_ID = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, reservationId);
+            int rowsAffected = pstmt.executeUpdate();
+
+            if (rowsAffected > 0) {
+                System.out.println("Reservation deleted successfully");
+            } else {
+                throw new DatabaseException("Reservation not found with ID: " + reservationId);
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to delete reservation: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get reservation by ID
+     */
+    public static Reservation getReservationById(int reservationId) throws DatabaseException {
+        String sql = "SELECT * FROM RESERVATIONS WHERE RESERVATION_ID = ?";
+
+        int resId = 0, guestIdFromRs = 0, roomIdFromRs = 0;
+        LocalDate checkInDate = null, checkOutDate = null;
+        double totalPrice = 0;
+        String status = null;
+        boolean found = false;
+
+        // Step 1: Extract data from ResultSet and close it
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, reservationId);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    resId = rs.getInt("RESERVATION_ID");
+                    guestIdFromRs = rs.getInt("GUEST_ID");
+                    roomIdFromRs = rs.getInt("ROOM_ID");
+                    checkInDate = rs.getDate("CHECK_IN_DATE").toLocalDate();
+                    checkOutDate = rs.getDate("CHECK_OUT_DATE").toLocalDate();
+                    totalPrice = rs.getDouble("TOTAL_PRICE");
+                    status = rs.getString("STATUS");
+                    found = true;
+                }
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve reservation: " + e.getMessage(), e);
+        }
+
+        // Step 2: If found, fetch guest and room objects (after ResultSet is closed)
+        if (found) {
+            Guest guest = (Guest) User.findUserByUsername(getUsernameById(guestIdFromRs));
+            Room room = Room.getRoomById(roomIdFromRs);
+
+            return new Reservation(
+                resId,
+                guest,
+                room,
+                checkInDate,
+                checkOutDate,
+                totalPrice,
+                status
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Get all reservations
+     */
+    public static ArrayList<Reservation> getAllReservations() throws DatabaseException {
+        ArrayList<Reservation> reservations = new ArrayList<>();
+        ArrayList<int[]> reservationData = new ArrayList<>();
+        String sql = "SELECT * FROM RESERVATIONS ORDER BY CHECK_IN_DATE DESC";
+
+        // Step 1: Extract all data from ResultSet and close it
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
+            while (rs.next()) {
+                int[] data = new int[3];
+                data[0] = rs.getInt("RESERVATION_ID");
+                data[1] = rs.getInt("GUEST_ID");
+                data[2] = rs.getInt("ROOM_ID");
+
+                LocalDate checkInDate = rs.getDate("CHECK_IN_DATE").toLocalDate();
+                LocalDate checkOutDate = rs.getDate("CHECK_OUT_DATE").toLocalDate();
+                double totalPrice = rs.getDouble("TOTAL_PRICE");
+                String status = rs.getString("STATUS");
+
+                // Store in temporary list
+                reservationData.add(data);
+
+                // Create a temporary reservation with nulls for guest and room
+                Reservation temp = new Reservation();
+                temp.setReservationId(data[0]);
+                temp.setCheckInDate(checkInDate);
+                temp.setCheckOutDate(checkOutDate);
+                temp.setTotalPrice(totalPrice);
+                temp.setStatus(status);
+                reservations.add(temp);
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve reservations: " + e.getMessage(), e);
+        }
+
+        // Step 2: Now fetch guest and room objects (after ResultSet is closed)
+        for (int i = 0; i < reservationData.size(); i++) {
+            int[] data = reservationData.get(i);
+            Reservation res = reservations.get(i);
+
+            try {
+                Guest guest = (Guest) User.findUserByUsername(getUsernameById(data[1]));
+                Room room = Room.getRoomById(data[2]);
+
+                res.setGuest(guest);
+                res.setRoom(room);
+            } catch (DatabaseException e) {
+                throw new DatabaseException("Failed to load guest or room for reservation: " + e.getMessage(), e);
+            }
+        }
+
+        return reservations;
+    }
+
+    /**
+     * Get reservations by guest ID
+     */
+    public static ArrayList<Reservation> getReservationsByGuestId(int guestId) throws DatabaseException {
+        ArrayList<Reservation> reservations = new ArrayList<>();
+        ArrayList<int[]> reservationData = new ArrayList<>();
+        String sql = "SELECT * FROM RESERVATIONS WHERE GUEST_ID = ? ORDER BY CHECK_IN_DATE DESC";
+
+        // Step 1: Extract all data from ResultSet and close it
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, guestId);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    int[] data = new int[3];
+                    data[0] = rs.getInt("RESERVATION_ID");
+                    data[1] = rs.getInt("GUEST_ID");
+                    data[2] = rs.getInt("ROOM_ID");
+
+                    LocalDate checkInDate = rs.getDate("CHECK_IN_DATE").toLocalDate();
+                    LocalDate checkOutDate = rs.getDate("CHECK_OUT_DATE").toLocalDate();
+                    double totalPrice = rs.getDouble("TOTAL_PRICE");
+                    String status = rs.getString("STATUS");
+
+                    // Store in temporary list
+                    reservationData.add(data);
+
+                    // Create a temporary reservation with nulls for guest and room
+                    Reservation temp = new Reservation();
+                    temp.setReservationId(data[0]);
+                    temp.setCheckInDate(checkInDate);
+                    temp.setCheckOutDate(checkOutDate);
+                    temp.setTotalPrice(totalPrice);
+                    temp.setStatus(status);
+                    reservations.add(temp);
+                }
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve reservations by guest: " + e.getMessage(), e);
+        }
+
+        // Step 2: Now fetch guest and room objects (after ResultSet is closed)
+        for (int i = 0; i < reservationData.size(); i++) {
+            int[] data = reservationData.get(i);
+            Reservation res = reservations.get(i);
+
+            try {
+                Guest guest = (Guest) User.findUserByUsername(getUsernameById(data[1]));
+                Room room = Room.getRoomById(data[2]);
+
+                res.setGuest(guest);
+                res.setRoom(room);
+            } catch (DatabaseException e) {
+                throw new DatabaseException("Failed to load guest or room for reservation: " + e.getMessage(), e);
+            }
+        }
+
+        return reservations;
+    }
+
+    /**
+     * Get reservations by status
+     */
+    public static ArrayList<Reservation> getReservationsByStatus(String status) throws DatabaseException {
+        ArrayList<Reservation> reservations = new ArrayList<>();
+        ArrayList<int[]> reservationData = new ArrayList<>();
+        String sql = "SELECT * FROM RESERVATIONS WHERE STATUS = ? ORDER BY CHECK_IN_DATE DESC";
+
+        // Step 1: Extract all data from ResultSet and close it
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, status);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    int[] data = new int[3];
+                    data[0] = rs.getInt("RESERVATION_ID");
+                    data[1] = rs.getInt("GUEST_ID");
+                    data[2] = rs.getInt("ROOM_ID");
+
+                    LocalDate checkInDate = rs.getDate("CHECK_IN_DATE").toLocalDate();
+                    LocalDate checkOutDate = rs.getDate("CHECK_OUT_DATE").toLocalDate();
+                    double totalPrice = rs.getDouble("TOTAL_PRICE");
+                    String statusFromRs = rs.getString("STATUS");
+
+                    // Store in temporary list
+                    reservationData.add(data);
+
+                    // Create a temporary reservation with nulls for guest and room
+                    Reservation temp = new Reservation();
+                    temp.setReservationId(data[0]);
+                    temp.setCheckInDate(checkInDate);
+                    temp.setCheckOutDate(checkOutDate);
+                    temp.setTotalPrice(totalPrice);
+                    temp.setStatus(statusFromRs);
+                    reservations.add(temp);
+                }
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve reservations by status: " + e.getMessage(), e);
+        }
+
+        // Step 2: Now fetch guest and room objects (after ResultSet is closed)
+        for (int i = 0; i < reservationData.size(); i++) {
+            int[] data = reservationData.get(i);
+            Reservation res = reservations.get(i);
+
+            try {
+                Guest guest = (Guest) User.findUserByUsername(getUsernameById(data[1]));
+                Room room = Room.getRoomById(data[2]);
+
+                res.setGuest(guest);
+                res.setRoom(room);
+            } catch (DatabaseException e) {
+                throw new DatabaseException("Failed to load guest or room for reservation: " + e.getMessage(), e);
+            }
+        }
+
+        return reservations;
+    }
+
+    /**
+     * Helper method to get username by user ID
+     */
+    private static String getUsernameById(int userId) throws DatabaseException {
+        String sql = "SELECT USERNAME FROM USERS WHERE USER_ID = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, userId);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("USERNAME");
+                }
+            }
+
+            throw new DatabaseException("User not found with ID: " + userId);
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to retrieve username: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "Reservation{" +
+                "reservationId=" + reservationId +
+                ", guest=" + (guest != null ? guest.getName() : "null") +
+                ", room=" + (room != null ? room.getRoomNumber() : "null") +
+                ", checkInDate=" + checkInDate +
+                ", checkOutDate=" + checkOutDate +
+                ", totalPrice=" + totalPrice +
+                ", status='" + status + '\'' +
+                '}';
+    }
+}

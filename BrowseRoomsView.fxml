@@ -1,0 +1,252 @@
+package javafxtesting.models;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import javafxtesting.database.DatabaseConnection;
+import javafxtesting.exceptions.DatabaseException;
+import javafxtesting.interfaces.Reportable;
+
+/**
+ * Administrator class - extends User and implements Reportable
+ * Represents a hotel administrator who manages the entire system
+ * Demonstrates Inheritance and Interface implementation from CS313
+ */
+public class Administrator extends User implements Reportable {
+
+    /**
+     * Default constructor
+     */
+    public Administrator() {
+        super();
+        this.userType = "Administrator";
+    }
+
+    /**
+     * Constructor with all parameters
+     */
+    public Administrator(int userId, String username, String password, String name, String email, String phone) {
+        super(userId, username, password, "Administrator", name, email, phone);
+    }
+
+    /**
+     * Constructor without userId (for new administrators)
+     */
+    public Administrator(String username, String password, String name, String email, String phone) {
+        super(username, password, "Administrator", name, email, phone);
+    }
+
+    // ============================================
+    // Administrator-specific methods
+    // ============================================
+
+    /**
+     * Add a new receptionist
+     * @param receptionist The receptionist to add
+     */
+    public void addReceptionist(Receptionist receptionist) throws DatabaseException {
+        receptionist.saveUser();
+        System.out.println("Receptionist added by administrator: " + this.name);
+    }
+
+    /**
+     * Remove a user
+     * @param userId The ID of the user to remove
+     */
+    public void removeUser(int userId) throws DatabaseException {
+        User.deleteUser(userId);
+        System.out.println("User removed by administrator: " + this.name);
+    }
+
+    /**
+     * Add a new room
+     * @param room The room to add
+     */
+    public void addRoom(Room room) throws DatabaseException {
+        room.saveRoom();
+        System.out.println("Room added by administrator: " + this.name);
+    }
+
+    /**
+     * Update room details
+     * @param room The room with updated details
+     */
+    public void updateRoom(Room room) throws DatabaseException {
+        room.updateRoom();
+        System.out.println("Room updated by administrator: " + this.name);
+    }
+
+    /**
+     * Remove a room
+     * @param roomId The ID of the room to remove
+     */
+    public void removeRoom(int roomId) throws DatabaseException {
+        Room.deleteRoom(roomId);
+        System.out.println("Room removed by administrator: " + this.name);
+    }
+
+    /**
+     * View all users
+     * @return ArrayList of all users
+     */
+    public ArrayList<User> viewAllUsers() throws DatabaseException {
+        return User.getAllUsers();
+    }
+
+    /**
+     * View all rooms
+     * @return ArrayList of all rooms
+     */
+    public ArrayList<Room> viewAllRooms() throws DatabaseException {
+        return Room.getAllRooms();
+    }
+
+    /**
+     * View all reservations
+     * @return ArrayList of all reservations
+     */
+    public ArrayList<Reservation> viewAllReservations() throws DatabaseException {
+        return Reservation.getAllReservations();
+    }
+
+    // ============================================
+    // Reportable Interface Implementation
+    // ============================================
+
+    @Override
+    public String generateReport() {
+        try {
+            return generateTotalRevenueReport();
+        } catch (DatabaseException e) {
+            return "Error generating report: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Generate total revenue report
+     * @return String containing the revenue report
+     */
+    public String generateTotalRevenueReport() throws DatabaseException {
+        StringBuilder report = new StringBuilder();
+        report.append("===========================================\n");
+        report.append("       TOTAL REVENUE REPORT\n");
+        report.append("===========================================\n\n");
+
+        String sql = "SELECT COUNT(*) AS TOTAL_RESERVATIONS, SUM(TOTAL_PRICE) AS TOTAL_REVENUE " +
+                     "FROM RESERVATIONS WHERE STATUS != 'Cancelled'";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
+            if (rs.next()) {
+                int totalReservations = rs.getInt("TOTAL_RESERVATIONS");
+                double totalRevenue = rs.getDouble("TOTAL_REVENUE");
+
+                report.append("Total Reservations: ").append(totalReservations).append("\n");
+                report.append("Total Revenue: $").append(String.format("%.2f", totalRevenue)).append("\n\n");
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to generate revenue report: " + e.getMessage(), e);
+        }
+
+        report.append("===========================================\n");
+        return report.toString();
+    }
+
+    /**
+     * Generate revenue report by room type
+     * @return String containing the revenue report by room type
+     */
+    public String generateRevenueByRoomTypeReport() throws DatabaseException {
+        StringBuilder report = new StringBuilder();
+        report.append("===========================================\n");
+        report.append("    REVENUE BY ROOM TYPE REPORT\n");
+        report.append("===========================================\n\n");
+
+        String sql = "SELECT R.ROOM_TYPE, COUNT(*) AS TOTAL_RESERVATIONS, SUM(RES.TOTAL_PRICE) AS TOTAL_REVENUE " +
+                     "FROM RESERVATIONS RES " +
+                     "JOIN ROOMS R ON RES.ROOM_ID = R.ROOM_ID " +
+                     "WHERE RES.STATUS != 'Cancelled' " +
+                     "GROUP BY R.ROOM_TYPE " +
+                     "ORDER BY TOTAL_REVENUE DESC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
+            while (rs.next()) {
+                String roomType = rs.getString("ROOM_TYPE");
+                int totalReservations = rs.getInt("TOTAL_RESERVATIONS");
+                double totalRevenue = rs.getDouble("TOTAL_REVENUE");
+
+                report.append("Room Type: ").append(roomType).append("\n");
+                report.append("  Reservations: ").append(totalReservations).append("\n");
+                report.append("  Revenue: $").append(String.format("%.2f", totalRevenue)).append("\n\n");
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to generate revenue by room type report: " + e.getMessage(), e);
+        }
+
+        report.append("===========================================\n");
+        return report.toString();
+    }
+
+    /**
+     * Generate revenue report by date range
+     * @param startDate Start date (format: YYYY-MM-DD)
+     * @param endDate End date (format: YYYY-MM-DD)
+     * @return String containing the revenue report for the date range
+     */
+    public String generateRevenueByDateRangeReport(String startDate, String endDate) throws DatabaseException {
+        StringBuilder report = new StringBuilder();
+        report.append("===========================================\n");
+        report.append("    REVENUE BY DATE RANGE REPORT\n");
+        report.append("===========================================\n");
+        report.append("Period: ").append(startDate).append(" to ").append(endDate).append("\n\n");
+
+        String sql = "SELECT COUNT(*) AS TOTAL_RESERVATIONS, SUM(TOTAL_PRICE) AS TOTAL_REVENUE " +
+                     "FROM RESERVATIONS " +
+                     "WHERE STATUS != 'Cancelled' " +
+                     "AND CHECK_IN_DATE >= TO_DATE(?, 'YYYY-MM-DD') " +
+                     "AND CHECK_OUT_DATE <= TO_DATE(?, 'YYYY-MM-DD')";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, startDate);
+            pstmt.setString(2, endDate);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    int totalReservations = rs.getInt("TOTAL_RESERVATIONS");
+                    double totalRevenue = rs.getDouble("TOTAL_REVENUE");
+
+                    report.append("Total Reservations: ").append(totalReservations).append("\n");
+                    report.append("Total Revenue: $").append(String.format("%.2f", totalRevenue)).append("\n\n");
+                }
+            }
+
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to generate revenue by date range report: " + e.getMessage(), e);
+        }
+
+        report.append("===========================================\n");
+        return report.toString();
+    }
+
+    @Override
+    public String toString() {
+        return "Administrator{" +
+                "userId=" + userId +
+                ", username='" + username + '\'' +
+                ", name='" + name + '\'' +
+                ", email='" + email + '\'' +
+                ", phone='" + phone + '\'' +
+                '}';
+    }
+}
